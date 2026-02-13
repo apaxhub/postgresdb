@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    restart: always
+
+    ports:
+      - '5432:5432' # remove in production
+
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: apaxhub_2026
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U root']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backups:
+    image: prodrigestivill/postgres-backup-local
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: app_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: apaxhub_2026
+      SCHEDULE: '@daily'
+      BACKUP_KEEP_DAYS: 7
+
+    volumes:
+      - ./backups:/backups
+
+volumes:
+  pgdata:
