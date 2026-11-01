@@ -48,6 +48,6 @@ services:
 
 networks:
   appnet:
-  external: true
+    external: true
 volumes:
   pgdata:
