@@ -1,33 +1,52 @@
+name: postgresdb
+
 services:
   postgres:
     image: postgres:17-alpine
     container_name: postgres
     restart: unless-stopped
 
+    # CRITICAL SECURITY RULE:
+    # Never expose 5432 to 0.0.0.0 on a public VPS.
+    # If host access is strictly required for local maintenance, bind to 127.0.0.1 only.
     ports:
-      - "5432:5432" # remove in production
+      - "127.0.0.1:5432:5432"
 
     environment:
-      environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
+      POSTGRES_DB: emandi
+      POSTGRES_USER: emandi
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      EMANDI_DB_PASSWORD: ${EMANDI_DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
 
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init:/docker-entrypoint-initdb.d:ro
 
-    networks: [appnet]
+    networks:
+      - appnet
 
+    # Resource controls
+    mem_limit: 2048m
+    shm_size: 256m
+
+    # Healthcheck verifies that target database 'emandi' is accepting queries
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U emandi -d emandi"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
+
+    # Production log rotation
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   backups:
-    image: prodrigestivill/postgres-backup-local
+    image: prodrigestivill/postgres-backup-local:latest
+    container_name: postgresdb-backups-1
     restart: unless-stopped
     depends_on:
       postgres:
@@ -36,18 +55,29 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: emandi
-      POSTGRES_USER: postgres
+      POSTGRES_USER: emandi
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      SCHEDULE: "@daily"
-      BACKUP_KEEP_DAYS: 7
+      POSTGRES_EXTRA_OPTS: "-Fc --clean --if-exists"
+      SCHEDULE: "@daily" # Hourly backups
+      BACKUP_KEEP_DAYS: 7 # Retain 7 days locally
 
     volumes:
       - ./backups:/backups
 
-    networks: [appnet]
+    networks:
+      - appnet
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
 networks:
   appnet:
     external: true
+
 volumes:
   pgdata:
+    name: postgresdb_pgdata # Locks physical volume identity across all commands
+
